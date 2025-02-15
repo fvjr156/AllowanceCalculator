@@ -32,14 +32,31 @@ public class AllowanceCalculator implements Calculator {
                 dailyAllowance,
                 ((dailyAllowance * WORKING_DAYS_IN_WEEK) * WEEKS_IN_MONTH) * months);
     }
-    
+
     @Override
     public List<SemestralResultModel> calculateTotalSemestralAllowance() {
         List<SemestralResultModel> results = new ArrayList<>();
-        //ignore unfinished method
+        double __totalAllowance = 0;
+        double __temp_dailyAllowance = 0;
+        double __weeklyAllowance = 0;
+        double __semestralAllowance = 0;
+
+        for (int i = 1; i <= semesters; i++) {
+            if (i == 1) {
+                __temp_dailyAllowance = dailyAllowance;
+            }
+            if (i % 2 == 0) {
+                __temp_dailyAllowance += (dailyAllowance * 0.03);
+            }
+            __weeklyAllowance = __temp_dailyAllowance * WORKING_DAYS_IN_WEEK;
+            __semestralAllowance = __weeklyAllowance * WEEKS_IN_SEMESTER;
+            __totalAllowance += __semestralAllowance;
+
+            results.add(new SemestralResultModel(i, __temp_dailyAllowance, __semestralAllowance, __totalAllowance));
+        }
         return results;
     }
-    
+
     public void start() throws IOException {
         int userInput = 0;
         BufferedReader readUserInput = new BufferedReader(new InputStreamReader(System.in));
@@ -65,7 +82,7 @@ public class AllowanceCalculator implements Calculator {
         }
         readUserInput.close();
     }
-    
+
     public void queryMonthly(BufferedReader readUserInput) throws IOException {
         System.out.print("\nHow much is your daily allowance? -> ");
         dailyAllowance = Double.parseDouble(readUserInput.readLine());
