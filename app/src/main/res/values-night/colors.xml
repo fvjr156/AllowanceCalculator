@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Colors (slightly lighter for dark mode) -->
+    <color name="primary_blue">#4D94FF</color>
+    <color name="primary_blue_dark">#3385FF</color>
+    <color name="primary_blue_light">#66A3FF</color>
+
+    <!-- Accent Colors -->
+    <color name="accent_green">#2ED9A3</color>
+    <color name="accent_green_dark">#1AC994</color>
+
+    <!-- Dark Mode Colors -->
+    <color name="background_light">#121212</color>
+    <color name="background_card_light">#1E1E1E</color>
+    <color name="background_surface_light">#242424</color>
+
+    <color name="text_primary_light">#FFFFFF</color>
+    <color name="text_secondary_light">#B3B3B3</color>
+    <color name="text_hint_light">#666666</color>
+
+    <color name="border_light">#333333</color>
+    <color name="divider_light">#2A2A2A</color>
+
+    <!-- Success/Error States -->
+    <color name="success">#47CD89</color>
+    <color name="success_light">#1A3B2E</color>
+    <color name="error">#FF6B6B</color>
+    <color name="error_light">#3A1F1F</color>
+    <color name="warning">#FFB366</color>
+    <color name="warning_light">#3A2E1A</color>
+</resources>

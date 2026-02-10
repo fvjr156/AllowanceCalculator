@@ -12,19 +12,19 @@ import java.util.List;
 @Dao
 public interface TransactionDao {
     @Query("""
-             SELECT * FROM transactions WHERE isDeleted = 0 ORDER BY createdAt ASC, transactionId ASC
+             SELECT * FROM transactions WHERE isDeleted = 0 ORDER BY createdAt DESC, transactionId DESC
             """)
     List<TransactionEntity> getActiveOrdered();
 
     @Query("""
-             SELECT * FROM transactions WHERE isDeleted = 0 ORDER BY createdAt ASC, transactionId ASC
+             SELECT * FROM transactions WHERE isDeleted = 0 ORDER BY createdAt DESC, transactionId DESC
             """)
     LiveData<List<TransactionEntity>> observeActiveOrdered();
 
     @Query("""
             SELECT * FROM transactions
             WHERE createdAt <= :timestamp
-            ORDER BY createdAt ASC, transactionId ASC
+            ORDER BY createdAt DESC, transactionId DESC
             """)
     List<TransactionEntity> getUpToTime(long timestamp);
 

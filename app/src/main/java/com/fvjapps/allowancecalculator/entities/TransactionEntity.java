@@ -15,9 +15,16 @@ import androidx.room.PrimaryKey;
 public class TransactionEntity {
     @PrimaryKey(autoGenerate = true)
     public long transactionId;
+    public String label;
     @NonNull
     public String type;
     public double amount;
     public long createdAt;
     public boolean isDeleted = false;
+
+    public TransactionEntity(String label, String type, double amount, long createdAt) {
+        this.label = label;
+        this.type = type;
+        this.amount = amount;
+    }
 }
