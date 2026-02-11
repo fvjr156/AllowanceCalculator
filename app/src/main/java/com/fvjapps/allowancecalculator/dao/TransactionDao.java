@@ -52,4 +52,12 @@ public interface TransactionDao {
             WHERE transactionId = :id
             """)
     void restoreById(long id);
+
+    @Query("""
+                SELECT transactionId, type, amount, createdAt, isDeleted, label
+                FROM transactions
+                ORDER BY createdAt DESC, transactionId DESC
+            """)
+    List<TransactionEntity> exportAllData();
+
 }

@@ -1,12 +1,23 @@
 package com.fvjapps.allowancecalculator.activities;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.content.DialogInterface;
+import android.content.Intent;
 import android.graphics.Canvas;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 
 import androidx.activity.EdgeToEdge;
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
@@ -19,14 +30,21 @@ import com.fvjapps.allowancecalculator.database.AppDatabase;
 import com.fvjapps.allowancecalculator.databinding.ActivityMainBinding;
 import com.fvjapps.allowancecalculator.entities.TransactionEntity;
 import com.fvjapps.allowancecalculator.fragments.AddTransactionDialogFragment;
+import com.fvjapps.allowancecalculator.managers.ExecutorManager;
 import com.fvjapps.allowancecalculator.recyclerview.TransactionAdapter;
 import com.fvjapps.allowancecalculator.repository.TransactionRepository;
 import com.fvjapps.allowancecalculator.viewmodels.CurrentBalanceViewModel;
 import com.fvjapps.allowancecalculator.viewmodels.CurrentBalanceViewModelFactory;
 import com.fvjapps.allowancecalculator.viewmodels.TransactionViewModel;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 
+import java.io.BufferedWriter;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 
 public class MainActivity extends AppCompatActivity implements AddTransactionDialogFragment.OnAddTransactionListener {
 
@@ -34,6 +52,62 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
     TransactionViewModel transactionViewModel;
     TransactionAdapter adapter;
     RecyclerView rview;
+
+    private ActivityResultLauncher<Intent> createCsvLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
+            new ActivityResultCallback<ActivityResult>() {
+                @Override
+                public void onActivityResult(ActivityResult result) {
+                    if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                        Uri uri = result.getData().getData();
+                        if (uri != null) {
+                            exportCsvToUri(uri);
+                        }
+                    }
+                }
+            });
+
+    private void exportCsvToUri(@NonNull Uri uri) {
+        ExecutorManager.getInstance().getFileExec().execute(new Runnable() {
+            @Override
+            public void run() {
+                try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(getContentResolver().openOutputStream(uri)))) {
+
+                    // transactionId, type, amount, createdAt, isDeleted, label
+                    List<TransactionEntity> entityList = transactionViewModel.exportData();
+
+                    bw.write("id,type,amount,creationdate,deleted,label");
+                    bw.newLine();
+
+                    for (TransactionEntity e : entityList) {
+                        bw.write(
+                            e.transactionId + "," +
+                                e.type + "," +
+                                e.amount + "," +
+                                e.createdAt + "," +
+                                e.isDeleted + "," +
+                                ((Function<String, String>) (x) -> {
+                                    if (x == null) return "";
+                                    if (x.contains(",") || x.contains("\"") || x.contains("\n"))
+                                        return "\"" + x.replace("\"", "\"\"") + "\"";
+                                    return x;
+                                }).apply(e.label)
+                        );
+                        bw.newLine();
+                    }
+
+                    bw.flush();
+
+                    runOnUiThread(() ->
+                            Snackbar.make(binding.main, "Export success", Snackbar.LENGTH_LONG).show()
+                    );
+                } catch (Exception e) {
+                    runOnUiThread(() ->
+                            Snackbar.make(binding.main, "Export failed", Snackbar.LENGTH_LONG).show()
+                    );
+                }
+            }
+        });
+    }
 
     @SuppressLint("DefaultLocale")
     @Override
@@ -74,6 +148,36 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
         binding.fabAddtransaction.setOnClickListener(v -> {
             AddTransactionDialogFragment dialog = new AddTransactionDialogFragment();
             dialog.show(getSupportFragmentManager(), "addtransaction");
+        });
+
+        binding.txvCurrentTransactionsCaption.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                    v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(MainActivity.this)
+                        .setTitle("Export Data")
+                        .setMessage("Want to export application data as CSV?")
+                        .setPositiveButton("YES", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                dialog.dismiss();
+                                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                                intent.setType("text/csv");
+                                intent.putExtra(Intent.EXTRA_TITLE, "transactions.csv");
+                                createCsvLauncher.launch(intent);
+                            }
+                        })
+                        .setNegativeButton("NO", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                dialog.dismiss();
+                            }
+                        });
+                builder.create().show();
+                return false;
+            }
         });
 
         setupItemTouchHelper();
@@ -128,6 +232,7 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                         dX, dY, actionState, isCurrentlyActive
                 );
             }
+
             @Override
             public void clearView(
                     @NonNull RecyclerView recyclerView,
@@ -137,6 +242,8 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                 holder.binding.viewForeground.setTranslationX(0f);
                 holder.binding.viewBackground.setVisibility(View.GONE);
                 super.clearView(recyclerView, viewHolder);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                    recyclerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
             }
         };
 

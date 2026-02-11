@@ -38,4 +38,8 @@ public class TransactionViewModel extends ViewModel {
             lastDeletedEntity = null;
         }
     }
+
+    public List<TransactionEntity> exportData() {
+        return transactionRepository.exportAllData();
+    }
 }

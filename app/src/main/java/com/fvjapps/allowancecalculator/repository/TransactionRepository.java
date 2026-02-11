@@ -30,4 +30,8 @@ public class TransactionRepository {
     public void restore(long id) {
         ExecutorManager.getInstance().getDbExec().execute(() -> transactionDao.restoreById(id));
     }
+
+    public List<TransactionEntity> exportAllData() {
+        return transactionDao.exportAllData();
+    }
 }
