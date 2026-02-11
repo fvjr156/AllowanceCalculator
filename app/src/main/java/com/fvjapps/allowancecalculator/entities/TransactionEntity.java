@@ -26,5 +26,6 @@ public class TransactionEntity {
         this.label = label;
         this.type = type;
         this.amount = amount;
+        this.createdAt = createdAt;
     }
 }
