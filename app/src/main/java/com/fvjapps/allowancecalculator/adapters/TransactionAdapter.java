@@ -1,4 +1,4 @@
-package com.fvjapps.allowancecalculator.recyclerview;
+package com.fvjapps.allowancecalculator.adapters;
 
 import android.annotation.SuppressLint;
 import android.content.Context;

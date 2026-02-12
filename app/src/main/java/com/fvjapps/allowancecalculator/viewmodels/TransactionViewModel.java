@@ -42,4 +42,8 @@ public class TransactionViewModel extends ViewModel {
     public List<TransactionEntity> exportData() {
         return transactionRepository.exportAllData();
     }
+
+    public List<TransactionEntity> exportAllActiveData() {
+        return transactionRepository.exportAllActiveData();
+    }
 }

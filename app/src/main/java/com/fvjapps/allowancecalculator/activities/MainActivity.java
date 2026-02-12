@@ -2,12 +2,14 @@ package com.fvjapps.allowancecalculator.activities;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Canvas;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.print.PrintManager;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
 
@@ -17,7 +19,6 @@ import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
@@ -25,13 +26,16 @@ import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.fvjapps.allowancecalculator.R;
+import com.fvjapps.allowancecalculator.adapters.TransactionsPrintAdapter;
 import com.fvjapps.allowancecalculator.dao.TransactionDao;
 import com.fvjapps.allowancecalculator.database.AppDatabase;
 import com.fvjapps.allowancecalculator.databinding.ActivityMainBinding;
 import com.fvjapps.allowancecalculator.entities.TransactionEntity;
 import com.fvjapps.allowancecalculator.fragments.AddTransactionDialogFragment;
 import com.fvjapps.allowancecalculator.managers.ExecutorManager;
-import com.fvjapps.allowancecalculator.recyclerview.TransactionAdapter;
+import com.fvjapps.allowancecalculator.adapters.TransactionAdapter;
+import com.fvjapps.allowancecalculator.misc.MillisConv;
 import com.fvjapps.allowancecalculator.repository.TransactionRepository;
 import com.fvjapps.allowancecalculator.viewmodels.CurrentBalanceViewModel;
 import com.fvjapps.allowancecalculator.viewmodels.CurrentBalanceViewModelFactory;
@@ -40,10 +44,11 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 
 import java.io.BufferedWriter;
-import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 public class MainActivity extends AppCompatActivity implements AddTransactionDialogFragment.OnAddTransactionListener {
@@ -66,6 +71,36 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                 }
             });
 
+    private void exportAsPdf() {
+        PrintManager man = (PrintManager) getSystemService(Context.PRINT_SERVICE);
+        AtomicReference<List<TransactionEntity>> entityList = new AtomicReference<>(new ArrayList<>());
+
+        String jobName = getString(R.string.app_name) + " Transactions Export";
+        ExecutorManager.getInstance().getDbExec().execute(() -> {
+            entityList.set(transactionViewModel.exportAllActiveData());
+            man.print(
+                    jobName,
+                    new TransactionsPrintAdapter(this,
+                            entityList.get(), new TransactionsPrintAdapter.TransactionPrintListener() {
+                        @Override
+                        public void onSuccess() {
+                            runOnUiThread(() ->
+                                    Snackbar.make(binding.main, "Export success", Snackbar.LENGTH_LONG).show()
+                            );
+                        }
+
+                        @Override
+                        public void onFail(String error) {
+                            runOnUiThread(() ->
+                                    Snackbar.make(binding.main, "Export failed!", Snackbar.LENGTH_LONG).show()
+                            );
+                        }
+                    }),
+                    null
+            );
+        });
+    }
+
     private void exportCsvToUri(@NonNull Uri uri) {
         ExecutorManager.getInstance().getFileExec().execute(new Runnable() {
             @Override
@@ -80,17 +115,17 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
 
                     for (TransactionEntity e : entityList) {
                         bw.write(
-                            e.transactionId + "," +
-                                e.type + "," +
-                                e.amount + "," +
-                                e.createdAt + "," +
-                                e.isDeleted + "," +
-                                ((Function<String, String>) (x) -> {
-                                    if (x == null) return "";
-                                    if (x.contains(",") || x.contains("\"") || x.contains("\n"))
-                                        return "\"" + x.replace("\"", "\"\"") + "\"";
-                                    return x;
-                                }).apply(e.label)
+                                e.transactionId + "," +
+                                        e.type + "," +
+                                        e.amount + "," +
+                                        MillisConv.toDate(e.createdAt, MillisConv.DateFormat.DATABASE_STANDARD) + "," +
+                                        e.isDeleted + "," +
+                                        ((Function<String, String>) (x) -> {
+                                            if (x == null) return "";
+                                            if (x.contains(",") || x.contains("\"") || x.contains("\n"))
+                                                return "\"" + x.replace("\"", "\"\"") + "\"";
+                                            return x;
+                                        }).apply(e.label)
                         );
                         bw.newLine();
                     }
@@ -140,6 +175,7 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
         CurrentBalanceViewModel balanceViewModel = new ViewModelProvider(this, balanceViewModelFactory).get(CurrentBalanceViewModel.class);
 
         balanceViewModel.getCurrentBalance().observe(this, balance -> {
+            binding.txvCurrentBalancePeso.setVisibility(View.VISIBLE);
             binding.txvCurrentBalance.setText(String.format("%.2f", balance));
         });
 
@@ -157,19 +193,25 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                     v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                 MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(MainActivity.this)
                         .setTitle("Export Data")
-                        .setMessage("Want to export application data as CSV?")
-                        .setPositiveButton("YES", new DialogInterface.OnClickListener() {
+                        .setMessage("Want to export application data?")
+                        .setPositiveButton("CSV", new DialogInterface.OnClickListener() {
                             @Override
                             public void onClick(DialogInterface dialog, int which) {
                                 dialog.dismiss();
                                 Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
                                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                                 intent.setType("text/csv");
-                                intent.putExtra(Intent.EXTRA_TITLE, "transactions.csv");
+                                intent.putExtra(Intent.EXTRA_TITLE, MillisConv.toDate(System.currentTimeMillis(), MillisConv.DateFormat.FILE_BACKUP) + "_transactions.csv");
                                 createCsvLauncher.launch(intent);
                             }
                         })
-                        .setNegativeButton("NO", new DialogInterface.OnClickListener() {
+                        .setNegativeButton("PDF", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                exportAsPdf();
+                            }
+                        })
+                        .setNeutralButton("NO", new DialogInterface.OnClickListener() {
                             @Override
                             public void onClick(DialogInterface dialog, int which) {
                                 dialog.dismiss();

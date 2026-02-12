@@ -60,4 +60,12 @@ public interface TransactionDao {
             """)
     List<TransactionEntity> exportAllData();
 
+    @Query("""
+                SELECT transactionId, type, amount, createdAt, isDeleted, label
+                FROM transactions
+                WHERE isDeleted = 0
+                ORDER BY createdAt ASC, transactionId ASC
+            """)
+    List<TransactionEntity> exportAllActiveData();
+
 }

@@ -41,7 +41,9 @@
                     android:id="@+id/txv_currentBalancePeso"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="₱  "
+                    android:text="₱"
+                    android:visibility="gone"
+                    android:paddingRight="15dp"
                     android:textSize="35sp"
                     android:textAppearance="@style/TextAppearance.AllowanceCalculator.Headline" />
 
@@ -49,7 +51,7 @@
                     android:id="@+id/txv_currentBalance"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="800.00"
+                    android:text="Processing..."
                     android:textSize="45sp"
                     android:textAppearance="@style/TextAppearance.AllowanceCalculator.Headline" />
             </LinearLayout>

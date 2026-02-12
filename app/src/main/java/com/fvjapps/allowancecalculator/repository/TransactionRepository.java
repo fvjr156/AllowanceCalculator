@@ -34,4 +34,6 @@ public class TransactionRepository {
     public List<TransactionEntity> exportAllData() {
         return transactionDao.exportAllData();
     }
+
+    public List<TransactionEntity> exportAllActiveData() { return transactionDao.exportAllActiveData(); }
 }
