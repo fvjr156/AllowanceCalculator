@@ -161,10 +161,10 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                     @NonNull
                     @Override
                     public <T extends ViewModel> T create(@NonNull Class<T> modelClass) {
-                        return Objects.requireNonNull(modelClass.cast(new TransactionViewModel(repository)));
+                        return Objects.<T>requireNonNull(modelClass.cast(new TransactionViewModel(repository)));
                     }
                 }
-        ).get(TransactionViewModel.class);
+        ).<TransactionViewModel>get(TransactionViewModel.class);
 
         rview = binding.recyclerView;
         adapter = new TransactionAdapter(getApplicationContext());
@@ -172,7 +172,7 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
         rview.setAdapter(adapter);
 
         CurrentBalanceViewModelFactory balanceViewModelFactory = new CurrentBalanceViewModelFactory(repository);
-        CurrentBalanceViewModel balanceViewModel = new ViewModelProvider(this, balanceViewModelFactory).get(CurrentBalanceViewModel.class);
+        CurrentBalanceViewModel balanceViewModel = new ViewModelProvider(this, balanceViewModelFactory).<CurrentBalanceViewModel>get(CurrentBalanceViewModel.class);
 
         balanceViewModel.getCurrentBalance().observe(this, balance -> {
             binding.txvCurrentBalancePeso.setVisibility(View.VISIBLE);

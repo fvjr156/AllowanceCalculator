@@ -30,6 +30,7 @@
                 android:id="@+id/txv_currentBalanceCaption"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:textColor="@color/black"
                 android:layout_marginBottom="0dp"
                 android:text="Current Balance:"
                 android:textAppearance="@style/TextAppearance.AllowanceCalculator.Title" />
@@ -42,6 +43,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="₱"
+                    android:textColor="@color/black"
                     android:visibility="gone"
                     android:paddingRight="15dp"
                     android:textSize="35sp"
@@ -52,6 +54,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Processing..."
+                    android:textColor="@color/black"
                     android:textSize="45sp"
                     android:textAppearance="@style/TextAppearance.AllowanceCalculator.Headline" />
             </LinearLayout>
@@ -62,6 +65,7 @@
             android:layout_width="match_parent"
             android:orientation="vertical"
             android:layout_height="0dp"
+            android:background="?attr/colorBackgroundFloating"
             app:layout_constraintTop_toBottomOf="@id/balancecard"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintLeft_toLeftOf="parent"
