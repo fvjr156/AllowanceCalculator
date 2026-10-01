@@ -7,11 +7,11 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.fvjapps.allowancecalculator.repository.TransactionRepository;
 
-public class CurrentBalanceViewModelFactory implements ViewModelProvider.Factory {
+public class TransactionViewModelFactory implements ViewModelProvider.Factory {
     private final TransactionRepository transactionRepository;
     private final LiveData<Long> selectedLedgerId;
 
-    public CurrentBalanceViewModelFactory(
+    public TransactionViewModelFactory(
             @NonNull TransactionRepository transactionRepository,
             @NonNull LiveData<Long> selectedLedgerId
     ) {
@@ -22,9 +22,9 @@ public class CurrentBalanceViewModelFactory implements ViewModelProvider.Factory
     @NonNull
     @Override
     public <T extends ViewModel> T create(@NonNull Class<T> modelClass) {
-        if (modelClass == CurrentBalanceViewModel.class) {
+        if (modelClass == TransactionViewModel.class) {
             return modelClass.cast(
-                    new CurrentBalanceViewModel(transactionRepository, selectedLedgerId)
+                    new TransactionViewModel(transactionRepository, selectedLedgerId)
             );
         }
         throw new IllegalArgumentException("Unknown ViewModel class: " + modelClass.getName());

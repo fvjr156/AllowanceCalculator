@@ -1,39 +1,23 @@
 package com.fvjapps.allowancecalculator.viewmodels;
 
+import androidx.annotation.NonNull;
 import androidx.lifecycle.LiveData;
-import androidx.lifecycle.MediatorLiveData;
+import androidx.lifecycle.Transformations;
 import androidx.lifecycle.ViewModel;
 
-import com.fvjapps.allowancecalculator.entities.TransactionEntity;
 import com.fvjapps.allowancecalculator.repository.TransactionRepository;
 
-import java.util.List;
-
 public class CurrentBalanceViewModel extends ViewModel {
-    private final MediatorLiveData<Double> currentBalance = new MediatorLiveData<>();
+    private final LiveData<Double> currentBalance;
 
-    public CurrentBalanceViewModel(TransactionRepository repository, long ledgerId) {
-        currentBalance.addSource(
-                repository.observeActiveOrdered(ledgerId),
-                this::recalculateBalance
+    public CurrentBalanceViewModel(
+            @NonNull TransactionRepository repository,
+            @NonNull LiveData<Long> selectedLedgerId
+    ) {
+        currentBalance = Transformations.switchMap(
+                selectedLedgerId,
+                repository::observeRunningBalance
         );
-    }
-
-    private void recalculateBalance(List<TransactionEntity> transactions) {
-        double balance = 0.0;
-        if (transactions != null) {
-            for (TransactionEntity transaction : transactions) {
-                switch (transaction.getType()) {
-                    case TransactionEntity.TYPE_ALLOWANCE:
-                        balance += transaction.getAmount();
-                        break;
-                    case TransactionEntity.TYPE_EXPENSE:
-                        balance -= transaction.getAmount();
-                        break;
-                }
-            }
-        }
-        currentBalance.setValue(balance);
     }
 
     public LiveData<Double> getCurrentBalance() {

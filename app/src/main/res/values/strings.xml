@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">AllowanceCalculator</string>
     <string name="add_a_transaction">Add a Transaction</string>
+    <string name="recent_transactions_for">Recent Transactions — %1$s</string>
 </resources>

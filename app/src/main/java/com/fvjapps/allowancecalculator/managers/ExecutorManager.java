@@ -10,7 +10,7 @@ public class ExecutorManager {
     private final ExecutorService fileExec;
 
     private ExecutorManager() {
-        dbExec = Executors.newFixedThreadPool(2, new ThreadFactory() {
+        dbExec = Executors.newSingleThreadExecutor(new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
                 Thread t = new Thread(r, "databaseopsthread");
