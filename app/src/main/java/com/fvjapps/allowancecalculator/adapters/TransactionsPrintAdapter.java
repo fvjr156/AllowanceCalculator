@@ -81,13 +81,13 @@ public class TransactionsPrintAdapter extends PrintDocumentAdapter {
         int startY = 40;
         int rowHeight = 20;
 
-        Function<String, String> translateType = new Function<String, String>() {
+        Function<Integer, String> translateType = new Function<Integer, String>() {
             @Override
-            public String apply(String s) {
-                return switch (s) {
-                    case "IN" -> "ALLOWANCE";
-                    case "OUT" -> "EXPENSE";
-                    default -> s;
+            public String apply(Integer type) {
+                return switch (type) {
+                    case TransactionEntity.TYPE_ALLOWANCE -> "ALLOWANCE";
+                    case TransactionEntity.TYPE_EXPENSE -> "EXPENSE";
+                    default -> "UNKNOWN";
                 };
             }
         };
@@ -116,12 +116,12 @@ public class TransactionsPrintAdapter extends PrintDocumentAdapter {
                 return;
             }
 
-            canvas.drawText(String.valueOf(t.transactionId), startX, y, paint);
-            canvas.drawText(translateType.apply(t.type), startX + 50, y, paint);
-            canvas.drawText(String.valueOf(t.amount), startX + 160, y, paint);
-            canvas.drawText(MillisConv.toDate(t.createdAt, MillisConv.DateFormat.DATABASE_STANDARD), startX + 240, y, paint);
+            canvas.drawText(String.valueOf(t.getId()), startX, y, paint);
+            canvas.drawText(translateType.apply(t.getType()), startX + 50, y, paint);
+            canvas.drawText(String.valueOf(t.getAmount()), startX + 160, y, paint);
+            canvas.drawText(MillisConv.toDate(t.getCreatedAt(), MillisConv.DateFormat.DATABASE_STANDARD), startX + 240, y, paint);
             canvas.drawText(
-                    t.label != null ? t.label : "",
+                    t.getName(),
                     startX + 410,
                     y,
                     paint

@@ -47,15 +47,15 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
     @Override
     public void onBindViewHolder(@NonNull TransactionViewHolder holder, int pos) {
         TransactionEntity tx = transactionEntities.get(pos);
-        holder.binding.itemLabel.setText(tx.label);
-        holder.binding.itemAmount.setText(String.format("%.2f", tx.amount));
+        holder.binding.itemLabel.setText(tx.getName());
+        holder.binding.itemAmount.setText(String.format("%.2f", tx.getAmount()));
         String typey = "";
         Drawable icony = AppCompatResources.getDrawable(context, R.drawable.baseline_add_24);;
-        switch(tx.type) {
-            case "IN":
+        switch (tx.getType()) {
+            case TransactionEntity.TYPE_ALLOWANCE:
                 typey = "ALLOWANCE";
                 break;
-            case "OUT":
+            case TransactionEntity.TYPE_EXPENSE:
                 typey = "EXPENSE";
                 icony = AppCompatResources.getDrawable(context, R.drawable.baseline_remove_24);
                 break;

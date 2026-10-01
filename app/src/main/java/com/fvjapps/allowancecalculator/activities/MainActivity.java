@@ -28,7 +28,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.fvjapps.allowancecalculator.R;
 import com.fvjapps.allowancecalculator.adapters.TransactionsPrintAdapter;
-import com.fvjapps.allowancecalculator.dao.TransactionDao;
 import com.fvjapps.allowancecalculator.database.AppDatabase;
 import com.fvjapps.allowancecalculator.databinding.ActivityMainBinding;
 import com.fvjapps.allowancecalculator.entities.TransactionEntity;
@@ -52,6 +51,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 public class MainActivity extends AppCompatActivity implements AddTransactionDialogFragment.OnAddTransactionListener {
+
+    private static final long INITIAL_LEDGER_ID = 1L;
 
     ActivityMainBinding binding;
     TransactionViewModel transactionViewModel;
@@ -115,17 +116,17 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
 
                     for (TransactionEntity e : entityList) {
                         bw.write(
-                                e.transactionId + "," +
-                                        e.type + "," +
-                                        e.amount + "," +
-                                        MillisConv.toDate(e.createdAt, MillisConv.DateFormat.DATABASE_STANDARD) + "," +
-                                        e.isDeleted + "," +
+                                e.getId() + "," +
+                                        e.getType() + "," +
+                                        e.getAmount() + "," +
+                                        MillisConv.toDate(e.getCreatedAt(), MillisConv.DateFormat.DATABASE_STANDARD) + "," +
+                                        e.isVoid() + "," +
                                         ((Function<String, String>) (x) -> {
                                             if (x == null) return "";
                                             if (x.contains(",") || x.contains("\"") || x.contains("\n"))
                                                 return "\"" + x.replace("\"", "\"\"") + "\"";
                                             return x;
-                                        }).apply(e.label)
+                                        }).apply(e.getName())
                         );
                         bw.newLine();
                     }
@@ -153,15 +154,17 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
         setContentView(binding.main);
 //        Objects.requireNonNull(getSupportActionBar()).hide();
 
-        TransactionDao transactionDao = AppDatabase.getInstance(this).transactionDao();
-        TransactionRepository repository = new TransactionRepository(transactionDao);
+        AppDatabase database = AppDatabase.getInstance(this);
+        TransactionRepository repository = new TransactionRepository(database);
         transactionViewModel = new ViewModelProvider(
                 this,
                 new ViewModelProvider.Factory() {
                     @NonNull
                     @Override
                     public <T extends ViewModel> T create(@NonNull Class<T> modelClass) {
-                        return Objects.<T>requireNonNull(modelClass.cast(new TransactionViewModel(repository)));
+                        return Objects.<T>requireNonNull(
+                                modelClass.cast(new TransactionViewModel(repository, INITIAL_LEDGER_ID))
+                        );
                     }
                 }
         ).<TransactionViewModel>get(TransactionViewModel.class);
@@ -171,7 +174,8 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
         rview.setLayoutManager(new LinearLayoutManager(this));
         rview.setAdapter(adapter);
 
-        CurrentBalanceViewModelFactory balanceViewModelFactory = new CurrentBalanceViewModelFactory(repository);
+        CurrentBalanceViewModelFactory balanceViewModelFactory =
+                new CurrentBalanceViewModelFactory(repository, INITIAL_LEDGER_ID);
         CurrentBalanceViewModel balanceViewModel = new ViewModelProvider(this, balanceViewModelFactory).<CurrentBalanceViewModel>get(CurrentBalanceViewModel.class);
 
         balanceViewModel.getCurrentBalance().observe(this, balance -> {
@@ -227,12 +231,12 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
 
     @Override
     public void onTransactionAdded(String labeltxt, double amount, AddTransactionDialogFragment.TransactionType type) {
-        String t = switch (type) {
-            case EXPENSE -> "OUT";
-            case ALLOWANCE -> "IN";
+        int transactionType = switch (type) {
+            case EXPENSE -> TransactionEntity.TYPE_EXPENSE;
+            case ALLOWANCE -> TransactionEntity.TYPE_ALLOWANCE;
         };
-        long epoch = System.currentTimeMillis();
-        TransactionEntity tx = new TransactionEntity(labeltxt, t, amount, epoch);
+        TransactionEntity tx =
+                new TransactionEntity(INITIAL_LEDGER_ID, labeltxt, amount, transactionType);
         transactionViewModel.add(tx);
         Snackbar.make(binding.main, "Successful creation.", Snackbar.LENGTH_SHORT).show();
     }

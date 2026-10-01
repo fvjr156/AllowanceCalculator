@@ -12,9 +12,9 @@ import java.util.List;
 public class CurrentBalanceViewModel extends ViewModel {
     private final MediatorLiveData<Double> currentBalance = new MediatorLiveData<>();
 
-    public CurrentBalanceViewModel(TransactionRepository repository) {
+    public CurrentBalanceViewModel(TransactionRepository repository, long ledgerId) {
         currentBalance.addSource(
-                repository.observeActiveOrdered(),
+                repository.observeActiveOrdered(ledgerId),
                 this::recalculateBalance
         );
     }
@@ -23,12 +23,12 @@ public class CurrentBalanceViewModel extends ViewModel {
         double balance = 0.0;
         if (transactions != null) {
             for (TransactionEntity transaction : transactions) {
-                switch(transaction.type) {
-                    case "IN":
-                        balance += transaction.amount;
+                switch (transaction.getType()) {
+                    case TransactionEntity.TYPE_ALLOWANCE:
+                        balance += transaction.getAmount();
                         break;
-                    case "OUT":
-                        balance -= transaction.amount;
+                    case TransactionEntity.TYPE_EXPENSE:
+                        balance -= transaction.getAmount();
                         break;
                 }
             }

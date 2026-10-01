@@ -8,9 +8,11 @@ import com.fvjapps.allowancecalculator.repository.TransactionRepository;
 
 public class CurrentBalanceViewModelFactory implements ViewModelProvider.Factory {
     private final TransactionRepository transactionRepository;
+    private final long ledgerId;
 
-    public CurrentBalanceViewModelFactory(TransactionRepository transactionRepository) {
+    public CurrentBalanceViewModelFactory(TransactionRepository transactionRepository, long ledgerId) {
         this.transactionRepository = transactionRepository;
+        this.ledgerId = ledgerId;
     }
 
     @NonNull
@@ -18,7 +20,7 @@ public class CurrentBalanceViewModelFactory implements ViewModelProvider.Factory
     @SuppressWarnings("unchecked")
     public <T extends ViewModel> T create(@NonNull Class<T> modelClass) {
         if (modelClass.isAssignableFrom(CurrentBalanceViewModel.class)) {
-            return (T) new CurrentBalanceViewModel(transactionRepository);
+            return (T) new CurrentBalanceViewModel(transactionRepository, ledgerId);
         }
         throw new IllegalArgumentException("Unknown ViewModel class!");
     }
