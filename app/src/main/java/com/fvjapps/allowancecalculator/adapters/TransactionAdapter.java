@@ -21,9 +21,28 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
 
     private List<TransactionEntity> transactionEntities = new ArrayList<>();
     private Context context;
+    private boolean hasColorScheme;
+    private int primaryColor;
+    private int surfaceColor;
+    private int elevatedSurfaceColor;
+    private int textColor;
 
     public TransactionAdapter(Context c) {
         this.context = c;
+    }
+
+    public void setColorScheme(
+            int primaryColor,
+            int surfaceColor,
+            int elevatedSurfaceColor,
+            int textColor
+    ) {
+        this.primaryColor = primaryColor;
+        this.surfaceColor = surfaceColor;
+        this.elevatedSurfaceColor = elevatedSurfaceColor;
+        this.textColor = textColor;
+        this.hasColorScheme = true;
+        notifyDataSetChanged();
     }
 
     public void setEntities(List<TransactionEntity> tx) {
@@ -49,6 +68,14 @@ public class TransactionAdapter extends RecyclerView.Adapter<TransactionAdapter.
         TransactionEntity tx = transactionEntities.get(pos);
         holder.binding.itemLabel.setText(tx.getName());
         holder.binding.itemAmount.setText(String.format("%.2f", tx.getAmount()));
+        if (hasColorScheme) {
+            holder.binding.getRoot().setBackgroundColor(surfaceColor);
+            holder.binding.viewForeground.setBackgroundColor(elevatedSurfaceColor);
+            holder.binding.itemLabel.setTextColor(textColor);
+            holder.binding.itemAmount.setTextColor(textColor);
+            holder.binding.transactionType.setTextColor(primaryColor);
+            holder.binding.transactionIcon.setColorFilter(primaryColor);
+        }
         String typey = "";
         Drawable icony = AppCompatResources.getDrawable(context, R.drawable.baseline_add_24);;
         switch (tx.getType()) {

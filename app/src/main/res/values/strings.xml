@@ -2,4 +2,13 @@
     <string name="app_name">AllowanceCalculator</string>
     <string name="add_a_transaction">Add a Transaction</string>
     <string name="recent_transactions_for">Recent Transactions — %1$s</string>
+    <string name="ledgers">Ledgers</string>
+    <string name="select_a_ledger">Select a ledger</string>
+    <string name="create_ledger">Create ledger</string>
+    <string name="ledger_name">Ledger name</string>
+    <string name="description_optional">Description (optional)</string>
+    <string name="color_scheme">Color scheme</string>
+    <string name="ledger_name_required">Enter a ledger name.</string>
+    <string name="choose_color_scheme">Choose a color scheme.</string>
+    <string name="active_ledger">Active ledger</string>
 </resources>

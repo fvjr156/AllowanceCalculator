@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.net.Uri;
 import android.os.Build;
@@ -30,11 +31,14 @@ import com.fvjapps.allowancecalculator.R;
 import com.fvjapps.allowancecalculator.adapters.TransactionsPrintAdapter;
 import com.fvjapps.allowancecalculator.database.AppDatabase;
 import com.fvjapps.allowancecalculator.databinding.ActivityMainBinding;
+import com.fvjapps.allowancecalculator.entities.ColorSchemeEntity;
+import com.fvjapps.allowancecalculator.entities.LedgerEntity;
 import com.fvjapps.allowancecalculator.entities.TransactionEntity;
 import com.fvjapps.allowancecalculator.fragments.AddTransactionDialogFragment;
 import com.fvjapps.allowancecalculator.managers.ExecutorManager;
 import com.fvjapps.allowancecalculator.adapters.TransactionAdapter;
 import com.fvjapps.allowancecalculator.misc.MillisConv;
+import com.fvjapps.allowancecalculator.repository.ColorSchemeRepository;
 import com.fvjapps.allowancecalculator.repository.LedgerRepository;
 import com.fvjapps.allowancecalculator.repository.TransactionRepository;
 import com.fvjapps.allowancecalculator.viewmodels.CurrentBalanceViewModel;
@@ -45,11 +49,19 @@ import com.fvjapps.allowancecalculator.viewmodels.TransactionViewModel;
 import com.fvjapps.allowancecalculator.viewmodels.TransactionViewModelFactory;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
+import com.google.android.material.navigation.NavigationView;
 
+import android.view.Menu;
+import android.view.MenuItem;
+import android.widget.TextView;
 import java.io.BufferedWriter;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
@@ -63,6 +75,9 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
     TransactionAdapter adapter;
     RecyclerView rview;
     private Long selectedLedgerId;
+    private List<ColorSchemeEntity> availableColorSchemes = new ArrayList<>();
+    private final Map<Integer, Long> drawerLedgerIds = new HashMap<>();
+    private static final int DRAWER_LEDGER_ITEM_BASE = 1000;
 
     private ActivityResultLauncher<Intent> createCsvLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
             new ActivityResultCallback<ActivityResult>() {
@@ -171,12 +186,17 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
 
         AppDatabase database = AppDatabase.getInstance(this);
         LedgerRepository ledgerRepository = new LedgerRepository(database);
+        ColorSchemeRepository colorSchemeRepository = new ColorSchemeRepository(database);
         TransactionRepository transactionRepository = new TransactionRepository(database);
         SharedPreferences preferences =
                 getSharedPreferences("ledger_preferences", MODE_PRIVATE);
         ledgerViewModel = new ViewModelProvider(
                 this,
-                new LedgerViewModelFactory(ledgerRepository, preferences)
+                new LedgerViewModelFactory(
+                        ledgerRepository,
+                        colorSchemeRepository,
+                        preferences
+                )
         ).get(LedgerViewModel.class);
 
         transactionViewModel = new ViewModelProvider(
@@ -208,14 +228,24 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
         });
 
         transactionViewModel.getTransactions().observe(this, adapter::setEntities);
-        ledgerViewModel.getSelectedLedgerId().observe(this, id -> selectedLedgerId = id);
+        ledgerViewModel.getSelectedLedgerId().observe(this, id -> {
+            selectedLedgerId = id;
+            populateLedgerDrawer(ledgerViewModel.getLedgers().getValue());
+        });
         ledgerViewModel.getSelectedLedger().observe(this, ledger -> {
             if (ledger != null) {
+                binding.toolbar.setTitle(ledger.getName());
                 binding.txvCurrentTransactionsCaption.setText(
                         getString(R.string.recent_transactions_for, ledger.getName())
                 );
+                populateLedgerDrawer(ledgerViewModel.getLedgers().getValue());
             }
         });
+        ledgerViewModel.getLedgers().observe(this, this::populateLedgerDrawer);
+        ledgerViewModel.getColorSchemes().observe(this, schemes -> {
+            availableColorSchemes = schemes == null ? new ArrayList<>() : schemes;
+        });
+        ledgerViewModel.getSelectedColorScheme().observe(this, this::applyColorScheme);
         ledgerViewModel.getError().observe(this, message -> {
             if (message != null) {
                 Snackbar.make(binding.main, message, Snackbar.LENGTH_LONG).show();
@@ -236,6 +266,11 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                 ? savedInstanceState.getLong(STATE_SELECTED_LEDGER_ID)
                 : null;
         ledgerViewModel.initialize(restoredLedgerId);
+
+        binding.toolbar.setNavigationOnClickListener(
+                view -> binding.main.openDrawer(binding.navigationView)
+        );
+        binding.navigationView.setNavigationItemSelectedListener(this::onDrawerItemSelected);
 
         binding.fabAddtransaction.setOnClickListener(v -> {
             AddTransactionDialogFragment dialog = new AddTransactionDialogFragment();
@@ -279,6 +314,137 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
         });
 
         setupItemTouchHelper();
+    }
+
+    private void populateLedgerDrawer(List<LedgerEntity> ledgers) {
+        Menu menu = binding.navigationView.getMenu();
+        menu.removeGroup(R.id.ledger_group);
+        drawerLedgerIds.clear();
+        if (ledgers != null) {
+            for (int i = 0; i < ledgers.size(); i++) {
+                LedgerEntity ledger = ledgers.get(i);
+                int itemId = DRAWER_LEDGER_ITEM_BASE + i;
+                drawerLedgerIds.put(itemId, ledger.getId());
+                MenuItem item = menu.add(
+                        R.id.ledger_group,
+                        itemId,
+                        i,
+                        ledger.getName()
+                );
+                item.setCheckable(true);
+                item.setChecked(selectedLedgerId != null
+                        && selectedLedgerId == ledger.getId());
+            }
+        }
+        menu.setGroupCheckable(R.id.ledger_group, true, true);
+        View header = binding.navigationView.getHeaderView(0);
+        TextView subtitle = header.findViewById(R.id.navigationSubtitle);
+        LedgerEntity selectedLedger = ledgerViewModel.getSelectedLedger().getValue();
+        subtitle.setText(selectedLedger == null
+                ? getString(R.string.select_a_ledger)
+                : selectedLedger.getName());
+    }
+
+    private boolean onDrawerItemSelected(@NonNull MenuItem item) {
+        Long ledgerId = drawerLedgerIds.get(item.getItemId());
+        if (ledgerId != null) {
+            ledgerViewModel.selectLedger(ledgerId);
+            binding.main.closeDrawer(binding.navigationView);
+            return true;
+        }
+        if (item.getItemId() == R.id.action_create_ledger) {
+            binding.main.closeDrawer(binding.navigationView);
+            showCreateLedgerDialog();
+            return true;
+        }
+        return false;
+    }
+
+    private void showCreateLedgerDialog() {
+        List<ColorSchemeEntity> schemes = availableColorSchemes;
+        if (schemes == null || schemes.isEmpty()) {
+            Snackbar.make(binding.main, "No predefined color schemes are available.", Snackbar.LENGTH_LONG).show();
+            return;
+        }
+        View dialogView = getLayoutInflater().inflate(R.layout.create_ledger_dialog, null);
+        TextInputLayout nameLayout = dialogView.findViewById(R.id.ledgerNameLayout);
+        TextInputEditText nameInput = dialogView.findViewById(R.id.ledgerName);
+        TextInputEditText descriptionInput = dialogView.findViewById(R.id.ledgerDescription);
+        android.widget.Spinner schemeSpinner = dialogView.findViewById(R.id.colorSchemeSpinner);
+        List<String> schemeNames = new ArrayList<>();
+        for (ColorSchemeEntity scheme : schemes) {
+            schemeNames.add(scheme.getName());
+        }
+        schemeSpinner.setAdapter(new android.widget.ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                schemeNames
+        ));
+
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.create_ledger)
+                .setView(dialogView)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.create_ledger, null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+                .setOnClickListener(view -> {
+                    String name = nameInput.getText() == null
+                            ? ""
+                            : nameInput.getText().toString().trim();
+                    if (name.isEmpty()) {
+                        nameLayout.setError(getString(R.string.ledger_name_required));
+                        return;
+                    }
+                    nameLayout.setError(null);
+                    String description = descriptionInput.getText() == null
+                            ? ""
+                            : descriptionInput.getText().toString().trim();
+                    ColorSchemeEntity selectedScheme = schemes.get(schemeSpinner.getSelectedItemPosition());
+                    ledgerViewModel.createLedger(name, description, selectedScheme.getId());
+                    dialog.dismiss();
+                }));
+        dialog.show();
+    }
+
+    private void applyColorScheme(ColorSchemeEntity scheme) {
+        if (scheme == null) {
+            return;
+        }
+        adapter.setColorScheme(
+                scheme.getPrimaryColor(),
+                scheme.getSurfaceColor(),
+                scheme.getSurfaceElevatedColor(),
+                scheme.getTextColor()
+        );
+        binding.toolbar.setBackgroundColor(scheme.getPrimaryColor());
+        binding.balancecard.setBackgroundColor(scheme.getSecondaryColor());
+        binding.transactionsContainer.setBackgroundColor(scheme.getSurfaceElevatedColor());
+        binding.mainContent.setBackgroundColor(scheme.getBackgroundColor());
+        binding.txvCurrentBalanceCaption.setTextColor(scheme.getTextColor());
+        binding.txvCurrentBalancePeso.setTextColor(scheme.getTextColor());
+        binding.txvCurrentBalance.setTextColor(scheme.getTextColor());
+        binding.txvCurrentTransactionsCaption.setTextColor(scheme.getTextColor());
+        binding.fabAddtransaction.setBackgroundTintList(
+                ColorStateList.valueOf(scheme.getPrimaryColor())
+        );
+        binding.navigationView.setBackgroundColor(scheme.getSurfaceColor());
+        binding.navigationView.setItemTextColor(new ColorStateList(
+                new int[][]{
+                        new int[]{android.R.attr.state_checked},
+                        new int[]{}
+                },
+                new int[]{scheme.getPrimaryColor(), scheme.getTextColor()}
+        ));
+        binding.navigationView.setItemIconTintList(new ColorStateList(
+                new int[][]{
+                        new int[]{android.R.attr.state_checked},
+                        new int[]{}
+                },
+                new int[]{scheme.getPrimaryColor(), scheme.getTextColor()}
+        ));
+        getWindow().setStatusBarColor(scheme.getPrimaryColor());
+        getWindow().setNavigationBarColor(scheme.getBackgroundColor());
     }
 
     @Override
