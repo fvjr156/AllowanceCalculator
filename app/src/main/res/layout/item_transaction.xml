@@ -84,7 +84,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentEnd="true"
-        android:background="#f44336"
+        android:background="@color/error"
         android:gravity="center"
         android:translationZ="1dp"
         android:padding="16dp">
@@ -110,7 +110,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="?attr/colorOnSurface"
+        android:background="@color/divider_light"
         android:layout_alignBottom="@id/view_foreground"
         android:translationZ="6dp"
         />

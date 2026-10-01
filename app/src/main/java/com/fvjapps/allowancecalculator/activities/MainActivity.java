@@ -6,7 +6,9 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.graphics.Canvas;
 import android.net.Uri;
 import android.os.Build;
@@ -22,6 +24,10 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.ColorUtils;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -239,6 +245,13 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         EdgeToEdge.enable(this);
         setContentView(binding.main);
+        View decorRootView = findViewById(android.R.id.content);
+
+        ViewCompat.setOnApplyWindowInsetsListener(decorRootView, (v, windowInsets) -> {
+            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
 //        Objects.requireNonNull(getSupportActionBar()).hide();
 
         AppDatabase database = AppDatabase.getInstance(this);
@@ -479,40 +492,64 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
         if (scheme == null) {
             return;
         }
+        boolean nightMode = (getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        int backgroundColor = nightMode
+                ? getColor(R.color.background_light)
+                : scheme.getBackgroundColor();
+        int surfaceColor = nightMode
+                ? getColor(R.color.background_surface_light)
+                : scheme.getSurfaceColor();
+        int elevatedSurfaceColor = nightMode
+                ? getColor(R.color.background_card_light)
+                : scheme.getSurfaceElevatedColor();
+        int textColor = nightMode
+                ? getColor(R.color.text_primary_light)
+                : scheme.getTextColor();
+        int balanceTextColor = nightMode
+                ? getContrastingTextColor(scheme.getSecondaryColor())
+                : textColor;
+
         adapter.setColorScheme(
                 scheme.getPrimaryColor(),
-                scheme.getSurfaceColor(),
-                scheme.getSurfaceElevatedColor(),
-                scheme.getTextColor()
+                surfaceColor,
+                elevatedSurfaceColor,
+                textColor
         );
         binding.toolbar.setBackgroundColor(scheme.getPrimaryColor());
         binding.balancecard.setBackgroundColor(scheme.getSecondaryColor());
-        binding.transactionsContainer.setBackgroundColor(scheme.getSurfaceElevatedColor());
-        binding.mainContent.setBackgroundColor(scheme.getBackgroundColor());
-        binding.txvCurrentBalanceCaption.setTextColor(scheme.getTextColor());
-        binding.txvCurrentBalancePeso.setTextColor(scheme.getTextColor());
-        binding.txvCurrentBalance.setTextColor(scheme.getTextColor());
-        binding.txvCurrentTransactionsCaption.setTextColor(scheme.getTextColor());
+        binding.transactionsContainer.setBackgroundColor(elevatedSurfaceColor);
+        binding.mainContent.setBackgroundColor(backgroundColor);
+        binding.txvCurrentBalanceCaption.setTextColor(balanceTextColor);
+        binding.txvCurrentBalancePeso.setTextColor(balanceTextColor);
+        binding.txvCurrentBalance.setTextColor(balanceTextColor);
+        binding.txvCurrentTransactionsCaption.setTextColor(textColor);
         binding.fabAddtransaction.setBackgroundTintList(
                 ColorStateList.valueOf(scheme.getPrimaryColor())
         );
-        binding.navigationView.setBackgroundColor(scheme.getSurfaceColor());
+        binding.navigationView.setBackgroundColor(surfaceColor);
         binding.navigationView.setItemTextColor(new ColorStateList(
                 new int[][]{
                         new int[]{android.R.attr.state_checked},
                         new int[]{}
                 },
-                new int[]{scheme.getPrimaryColor(), scheme.getTextColor()}
+                new int[]{scheme.getPrimaryColor(), textColor}
         ));
         binding.navigationView.setItemIconTintList(new ColorStateList(
                 new int[][]{
                         new int[]{android.R.attr.state_checked},
                         new int[]{}
                 },
-                new int[]{scheme.getPrimaryColor(), scheme.getTextColor()}
+                new int[]{scheme.getPrimaryColor(), textColor}
         ));
         getWindow().setStatusBarColor(scheme.getPrimaryColor());
-        getWindow().setNavigationBarColor(scheme.getBackgroundColor());
+        getWindow().setNavigationBarColor(backgroundColor);
+    }
+
+    private int getContrastingTextColor(int backgroundColor) {
+        double whiteContrast = ColorUtils.calculateContrast(Color.WHITE, backgroundColor);
+        double blackContrast = ColorUtils.calculateContrast(Color.BLACK, backgroundColor);
+        return whiteContrast >= blackContrast ? Color.WHITE : Color.BLACK;
     }
 
     @Override
