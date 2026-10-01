@@ -24,7 +24,7 @@ public interface TransactionDao {
         FROM transactions
         WHERE ledger_id = :ledgerId
           AND is_void = 0
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, id DESC
     """)
     LiveData<List<TransactionEntity>> getActiveTransactions(
             long ledgerId
@@ -35,7 +35,7 @@ public interface TransactionDao {
         FROM transactions
         WHERE ledger_id = :ledgerId
           AND is_void = 0
-        ORDER BY created_at ASC
+        ORDER BY created_at ASC, id ASC
     """)
     List<TransactionEntity> getActiveTransactionsSync(
             long ledgerId
@@ -45,7 +45,15 @@ public interface TransactionDao {
         SELECT *
         FROM transactions
         WHERE ledger_id = :ledgerId
-        ORDER BY created_at DESC
+        ORDER BY created_at ASC, id ASC
+    """)
+    List<TransactionEntity> getAllTransactionsSync(long ledgerId);
+
+    @Query("""
+        SELECT *
+        FROM transactions
+        WHERE ledger_id = :ledgerId
+        ORDER BY created_at DESC, id DESC
     """)
     LiveData<List<TransactionEntity>> getAllTransactions(
             long ledgerId

@@ -47,6 +47,13 @@ public interface LedgerDao {
     @Query("""
         SELECT *
         FROM ledgers
+        ORDER BY name ASC
+    """)
+    List<LedgerEntity> getAllSync();
+
+    @Query("""
+        SELECT *
+        FROM ledgers
         ORDER BY id ASC
         LIMIT 1
     """)
@@ -58,4 +65,11 @@ public interface LedgerDao {
         WHERE id = :ledgerId
     """)
     void updateRunningBalance(long ledgerId, double balance);
+
+    @Query("""
+        SELECT running_balance
+        FROM ledgers
+        WHERE id = :ledgerId
+    """)
+    LiveData<Double> observeRunningBalance(long ledgerId);
 }

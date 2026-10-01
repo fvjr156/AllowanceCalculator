@@ -4,7 +4,6 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.ViewModel;
 
 import com.fvjapps.allowancecalculator.entities.TransactionEntity;
-import com.fvjapps.allowancecalculator.managers.ExecutorManager;
 import com.fvjapps.allowancecalculator.repository.TransactionRepository;
 
 import java.util.List;
@@ -27,24 +26,18 @@ public class TransactionViewModel extends ViewModel {
     }
 
     public void add(TransactionEntity entity) {
-        ExecutorManager.getInstance().getDbExec().execute(
-                () -> transactionRepository.insert(entity)
-        );
+        transactionRepository.insertAsync(entity);
     }
 
     public void delete(TransactionEntity entity) {
         lastDeletedEntity = entity;
-        ExecutorManager.getInstance().getDbExec().execute(
-                () -> transactionRepository.voidTransaction(entity.getId())
-        );
+        transactionRepository.voidTransactionAsync(entity.getId());
     }
 
     public void undoDelete() {
         if (lastDeletedEntity != null) {
             long transactionId = lastDeletedEntity.getId();
-            ExecutorManager.getInstance().getDbExec().execute(
-                    () -> transactionRepository.restoreTransaction(transactionId)
-            );
+            transactionRepository.restoreTransactionAsync(transactionId);
             lastDeletedEntity = null;
         }
     }

@@ -37,4 +37,18 @@ public interface ColorSchemeDao {
         WHERE id = :id
     """)
     LiveData<ColorSchemeEntity> getById(long id);
+
+    @Query("""
+        SELECT *
+        FROM color_schemes
+        WHERE id = :id
+    """)
+    ColorSchemeEntity getByIdSync(long id);
+
+    @Query("""
+        SELECT *
+        FROM color_schemes
+        ORDER BY id ASC
+    """)
+    List<ColorSchemeEntity> getAllSync();
 }
