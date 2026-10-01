@@ -38,6 +38,7 @@ import com.fvjapps.allowancecalculator.fragments.AddTransactionDialogFragment;
 import com.fvjapps.allowancecalculator.managers.ExecutorManager;
 import com.fvjapps.allowancecalculator.adapters.TransactionAdapter;
 import com.fvjapps.allowancecalculator.misc.MillisConv;
+import com.fvjapps.allowancecalculator.misc.ExportFileName;
 import com.fvjapps.allowancecalculator.repository.ColorSchemeRepository;
 import com.fvjapps.allowancecalculator.repository.LedgerRepository;
 import com.fvjapps.allowancecalculator.repository.TransactionRepository;
@@ -57,13 +58,13 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.TextView;
 import java.io.BufferedWriter;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 
 public class MainActivity extends AppCompatActivity implements AddTransactionDialogFragment.OnAddTransactionListener {
 
@@ -75,7 +76,10 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
     TransactionAdapter adapter;
     RecyclerView rview;
     private Long selectedLedgerId;
+    private String selectedLedgerName;
     private List<ColorSchemeEntity> availableColorSchemes = new ArrayList<>();
+    private Long pendingCsvLedgerId;
+    private String pendingCsvLedgerName;
     private final Map<Integer, Long> drawerLedgerIds = new HashMap<>();
     private static final int DRAWER_LEDGER_ITEM_BASE = 1000;
 
@@ -86,7 +90,13 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                     if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                         Uri uri = result.getData().getData();
                         if (uri != null) {
-                            exportCsvToUri(uri);
+                            if (pendingCsvLedgerId != null && pendingCsvLedgerName != null) {
+                                exportCsvToUri(
+                                        uri,
+                                        pendingCsvLedgerId,
+                                        pendingCsvLedgerName
+                                );
+                            }
                         }
                     }
                 }
@@ -98,16 +108,32 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
             return;
         }
         PrintManager man = (PrintManager) getSystemService(Context.PRINT_SERVICE);
-        AtomicReference<List<TransactionEntity>> entityList = new AtomicReference<>(new ArrayList<>());
         long exportLedgerId = selectedLedgerId;
+        String exportLedgerName = selectedLedgerName;
+        if (exportLedgerName == null) {
+            Snackbar.make(binding.main, "Wait for the selected ledger to load before exporting.", Snackbar.LENGTH_LONG).show();
+            return;
+        }
 
-        String jobName = getString(R.string.app_name) + " Transactions Export";
+        String jobName = getString(R.string.app_name) + " - " + exportLedgerName;
         ExecutorManager.getInstance().getDbExec().execute(() -> {
-            entityList.set(transactionViewModel.exportAllActiveData(exportLedgerId));
-            man.print(
-                    jobName,
-                    new TransactionsPrintAdapter(this,
-                            entityList.get(), new TransactionsPrintAdapter.TransactionPrintListener() {
+            try {
+                List<TransactionEntity> entityList =
+                        transactionViewModel.exportAllActiveData(exportLedgerId);
+                if (entityList.stream().anyMatch(
+                        transaction -> transaction.getLedgerId() != exportLedgerId
+                )) {
+                    throw new IllegalStateException(
+                            "Export query returned a transaction from another ledger."
+                    );
+                }
+                runOnUiThread(() -> man.print(
+                        jobName,
+                        new TransactionsPrintAdapter(
+                                this,
+                                entityList,
+                                exportLedgerName,
+                                new TransactionsPrintAdapter.TransactionPrintListener() {
                         @Override
                         public void onSuccess() {
                             runOnUiThread(() ->
@@ -118,61 +144,92 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                         @Override
                         public void onFail(String error) {
                             runOnUiThread(() ->
-                                    Snackbar.make(binding.main, "Export failed!", Snackbar.LENGTH_LONG).show()
+                                    Snackbar.make(binding.main, "PDF export failed: " + error, Snackbar.LENGTH_LONG).show()
                             );
                         }
                     }),
                     null
-            );
+                ));
+            } catch (RuntimeException exception) {
+                runOnUiThread(() ->
+                        Snackbar.make(
+                                binding.main,
+                                "PDF export failed: " + exception.getMessage(),
+                                Snackbar.LENGTH_LONG
+                        ).show()
+                );
+            }
         });
     }
 
-    private void exportCsvToUri(@NonNull Uri uri) {
-        if (selectedLedgerId == null) {
-            Snackbar.make(binding.main, "Wait for a ledger to load before exporting.", Snackbar.LENGTH_LONG).show();
-            return;
-        }
-        long exportLedgerId = selectedLedgerId;
+    private void exportCsvToUri(
+            @NonNull Uri uri,
+            long exportLedgerId,
+            @NonNull String exportLedgerName
+    ) {
         ExecutorManager.getInstance().getFileExec().execute(new Runnable() {
             @Override
             public void run() {
-                try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(getContentResolver().openOutputStream(uri)))) {
-
-                    // transactionId, type, amount, createdAt, isDeleted, label
-                    List<TransactionEntity> entityList = transactionViewModel.exportData(exportLedgerId);
-
-                    bw.write("id,type,amount,creationdate,deleted,label");
-                    bw.newLine();
-
-                    for (TransactionEntity e : entityList) {
-                        bw.write(
-                                e.getId() + "," +
-                                        e.getType() + "," +
-                                        e.getAmount() + "," +
-                                        MillisConv.toDate(e.getCreatedAt(), MillisConv.DateFormat.DATABASE_STANDARD) + "," +
-                                        e.isVoid() + "," +
-                                        ((Function<String, String>) (x) -> {
-                                            if (x == null) return "";
-                                            if (x.contains(",") || x.contains("\"") || x.contains("\n"))
-                                                return "\"" + x.replace("\"", "\"\"") + "\"";
-                                            return x;
-                                        }).apply(e.getName())
-                        );
-                        bw.newLine();
+                try {
+                    OutputStream outputStream = getContentResolver().openOutputStream(uri);
+                    if (outputStream == null) {
+                        throw new java.io.IOException("Unable to open the selected export destination.");
                     }
+                    try (BufferedWriter bw = new BufferedWriter(
+                            new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)
+                    )) {
 
-                    bw.flush();
+                        List<TransactionEntity> entityList =
+                                transactionViewModel.exportData(exportLedgerId);
+
+                        bw.write("ledger,id,type,amount,creationdate,voided,label");
+                        bw.newLine();
+
+                        for (TransactionEntity e : entityList) {
+                            if (e.getLedgerId() != exportLedgerId) {
+                                throw new IllegalStateException(
+                                        "Export query returned a transaction from another ledger."
+                                );
+                            }
+                            bw.write(
+                                    csvField(exportLedgerName) + "," +
+                                            e.getId() + "," +
+                                            e.getType() + "," +
+                                            e.getAmount() + "," +
+                                            csvField(MillisConv.toDate(
+                                                    e.getCreatedAt(),
+                                                    MillisConv.DateFormat.DATABASE_STANDARD
+                                            )) + "," +
+                                            e.isVoid() + "," +
+                                            csvField(e.getName())
+                            );
+                            bw.newLine();
+                        }
+
+                        bw.flush();
+                    }
 
                     runOnUiThread(() ->
                             Snackbar.make(binding.main, "Export success", Snackbar.LENGTH_LONG).show()
                     );
                 } catch (Exception e) {
                     runOnUiThread(() ->
-                            Snackbar.make(binding.main, "Export failed", Snackbar.LENGTH_LONG).show()
+                            Snackbar.make(binding.main, "CSV export failed: " + e.getMessage(), Snackbar.LENGTH_LONG).show()
                     );
                 }
             }
         });
+    }
+
+    private String csvField(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")
+                || value.contains("\r")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
     }
 
     @SuppressLint("DefaultLocale")
@@ -230,10 +287,12 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
         transactionViewModel.getTransactions().observe(this, adapter::setEntities);
         ledgerViewModel.getSelectedLedgerId().observe(this, id -> {
             selectedLedgerId = id;
+            selectedLedgerName = null;
             populateLedgerDrawer(ledgerViewModel.getLedgers().getValue());
         });
         ledgerViewModel.getSelectedLedger().observe(this, ledger -> {
             if (ledger != null) {
+                selectedLedgerName = ledger.getName();
                 binding.toolbar.setTitle(ledger.getName());
                 binding.txvCurrentTransactionsCaption.setText(
                         getString(R.string.recent_transactions_for, ledger.getName())
@@ -292,7 +351,16 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                                 Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
                                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                                 intent.setType("text/csv");
-                                intent.putExtra(Intent.EXTRA_TITLE, MillisConv.toDate(System.currentTimeMillis(), MillisConv.DateFormat.FILE_BACKUP) + "_transactions.csv");
+                                if (selectedLedgerId == null || selectedLedgerName == null) {
+                                    Snackbar.make(binding.main, "Wait for a ledger to load before exporting.", Snackbar.LENGTH_LONG).show();
+                                    return;
+                                }
+                                pendingCsvLedgerId = selectedLedgerId;
+                                pendingCsvLedgerName = selectedLedgerName;
+                                intent.putExtra(
+                                        Intent.EXTRA_TITLE,
+                                        ExportFileName.forLedger(selectedLedgerName, "csv")
+                                );
                                 createCsvLauncher.launch(intent);
                             }
                         })

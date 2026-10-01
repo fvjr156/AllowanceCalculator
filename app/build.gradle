@@ -50,4 +50,5 @@ dependencies {
     androidTestImplementation libs.espresso.core
     implementation "androidx.room:room-runtime:$roomver"
     annotationProcessor "androidx.room:room-compiler:$roomver"
+    androidTestImplementation "androidx.room:room-testing:$roomver"
 }

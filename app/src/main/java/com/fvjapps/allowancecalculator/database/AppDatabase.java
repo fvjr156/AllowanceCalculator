@@ -41,21 +41,25 @@ public abstract class AppDatabase extends RoomDatabase {
                             "allowancecalculatordb"
                     )
                             .fallbackToDestructiveMigration()
-                            .addCallback(new RoomDatabase.Callback() {
-                                @Override
-                                public void onCreate(
-                                        @androidx.annotation.NonNull
-                                        androidx.sqlite.db.SupportSQLiteDatabase db
-                                ) {
-                                    super.onCreate(db);
-                                    seedColorSchemes(db);
-                                }
-                            })
+                            .addCallback(createCallback())
                             .build();
                 }
             }
         }
         return instance;
+    }
+
+    static RoomDatabase.Callback createCallback() {
+        return new RoomDatabase.Callback() {
+            @Override
+            public void onCreate(
+                    @androidx.annotation.NonNull
+                    androidx.sqlite.db.SupportSQLiteDatabase db
+            ) {
+                super.onCreate(db);
+                seedColorSchemes(db);
+            }
+        };
     }
 
     private static void seedColorSchemes(

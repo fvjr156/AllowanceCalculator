@@ -14,6 +14,7 @@ import android.print.PrintDocumentAdapter;
 import android.print.PrintDocumentInfo;
 
 import com.fvjapps.allowancecalculator.entities.TransactionEntity;
+import com.fvjapps.allowancecalculator.misc.ExportFileName;
 import com.fvjapps.allowancecalculator.misc.MillisConv;
 
 import java.io.FileOutputStream;
@@ -33,12 +34,16 @@ public class TransactionsPrintAdapter extends PrintDocumentAdapter {
 
     private final Context context;
     private final List<TransactionEntity> entityList;
+    private final String ledgerName;
     private PdfDocument pdfDocument;
 
     public TransactionsPrintAdapter(Context context,
-                                    List<TransactionEntity> transactions, TransactionPrintListener listener) {
+                                    List<TransactionEntity> transactions,
+                                    String ledgerName,
+                                    TransactionPrintListener listener) {
         this.context = context;
         this.entityList = transactions;
+        this.ledgerName = ledgerName;
         this.listener = listener;
     }
 
@@ -51,7 +56,9 @@ public class TransactionsPrintAdapter extends PrintDocumentAdapter {
             return;
         }
 
-        PrintDocumentInfo info = new PrintDocumentInfo.Builder(MillisConv.toDate(System.currentTimeMillis(), MillisConv.DateFormat.FILE_BACKUP) + "_transactions.pdf")
+        PrintDocumentInfo info = new PrintDocumentInfo.Builder(
+                ExportFileName.forLedger(ledgerName, "pdf")
+        )
                 .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
                 .build();
 
@@ -94,10 +101,11 @@ public class TransactionsPrintAdapter extends PrintDocumentAdapter {
 
         String exportDate = MillisConv.toDate(System.currentTimeMillis(), MillisConv.DateFormat.DATABASE_STANDARD);
 
-        canvas.drawText("Allowance Calculator Application — Transactions Export", startX, startY, paint2);
-        canvas.drawText("Exported at: " + exportDate, startX, startY + 25, paint);
+        canvas.drawText("Allowance Calculator - Transactions Export", startX, startY, paint2);
+        canvas.drawText("Ledger: " + ledgerName, startX, startY + 25, paint);
+        canvas.drawText("Exported at: " + exportDate, startX, startY + 45, paint);
 
-        int y = startY + 60;
+        int y = startY + 80;
 
         canvas.drawText("ID", startX, y, paint);
         canvas.drawText("Type", startX + 50, y, paint);
