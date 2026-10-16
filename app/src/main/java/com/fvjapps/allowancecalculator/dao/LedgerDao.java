@@ -51,6 +51,9 @@ public interface LedgerDao {
     """)
     List<LedgerEntity> getAllSync();
 
+    @Query("SELECT COUNT(*) FROM ledgers")
+    int getCountSync();
+
     @Query("""
         SELECT *
         FROM ledgers

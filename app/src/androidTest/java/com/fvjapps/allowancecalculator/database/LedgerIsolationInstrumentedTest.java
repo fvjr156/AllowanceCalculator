@@ -1,6 +1,7 @@
 package com.fvjapps.allowancecalculator.database;
 
 import android.content.Context;
+import android.database.sqlite.SQLiteDatabase;
 
 import androidx.room.Room;
 import androidx.test.core.app.ApplicationProvider;
@@ -22,6 +23,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -131,6 +133,124 @@ public class LedgerIsolationInstrumentedTest {
         assertTrue(transactionRepository.getAllTransactionsSync(
                 ledgerRepository.getFirstLedgerSync().getId()
         ).isEmpty());
+    }
+
+    @Test
+    public void lastLedgerCannotBeDeleted() {
+        LedgerEntity onlyLedger = ledgerRepository.getFirstLedgerSync();
+
+        try {
+            ledgerRepository.deleteLedger(onlyLedger.getId());
+            fail("Expected deleting the last ledger to fail");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("last ledger"));
+        }
+
+        assertEquals(1, ledgerRepository.getLedgersSync().size());
+        assertEquals(onlyLedger.getId(), ledgerRepository.getFirstLedgerSync().getId());
+    }
+
+    @Test
+    public void versionOneMigrationPreservesLegacyTransactions() {
+        assertLegacyTransactionsMigrate("allowance-migration-test.db", "transactions");
+    }
+
+    @Test
+    public void versionOneMigrationSupportsOriginalEntityTableName() {
+        assertLegacyTransactionsMigrate(
+                "allowance-migration-entity-test.db",
+                "TransactionEntity"
+        );
+    }
+
+    private void assertLegacyTransactionsMigrate(
+            String databaseName,
+            String legacyTableName
+    ) {
+        Context context = ApplicationProvider.getApplicationContext();
+        context.deleteDatabase(databaseName);
+
+        SQLiteDatabase legacyDatabase = context.openOrCreateDatabase(
+                databaseName,
+                Context.MODE_PRIVATE,
+                null
+        );
+        legacyDatabase.execSQL("""
+                CREATE TABLE `%s` (
+                    transactionId INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    label TEXT,
+                    type TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    createdAt INTEGER NOT NULL,
+                    isDeleted INTEGER NOT NULL
+                )
+                """.formatted(legacyTableName));
+        legacyDatabase.execSQL(
+                "CREATE INDEX index_" + legacyTableName + "_createdAt " +
+                        "ON `" + legacyTableName + "` (createdAt)"
+        );
+        legacyDatabase.execSQL(
+                "CREATE INDEX index_" + legacyTableName + "_isDeleted " +
+                        "ON `" + legacyTableName + "` (isDeleted)"
+        );
+        legacyDatabase.execSQL("""
+                INSERT INTO `%s`
+                    (transactionId, label, type, amount, createdAt, isDeleted)
+                VALUES
+                    (17, 'Allowance', 'IN', 100, 1000, 0),
+                    (18, 'Groceries', 'OUT', 25, 2000, 0),
+                    (19, 'Old expense', 'OUT', 10, 3000, 1)
+                """.formatted(legacyTableName));
+        legacyDatabase.setVersion(1);
+        legacyDatabase.close();
+
+        AppDatabase migratedDatabase = null;
+        try {
+            migratedDatabase = Room.databaseBuilder(
+                            context,
+                            AppDatabase.class,
+                            databaseName
+                    )
+                    .addMigrations(AppDatabase.MIGRATION_1_2)
+                    .allowMainThreadQueries()
+                    .build();
+            List<LedgerEntity> ledgers = migratedDatabase.ledgerDao().getAllSync();
+            assertEquals(1, ledgers.size());
+            LedgerEntity migratedLedger = ledgers.get(0);
+            assertNotNull(migratedLedger.getColorSchemeId());
+            assertEquals(75, migratedLedger.getRunningBalance(), 0.001);
+
+            List<TransactionEntity> transactions =
+                    migratedDatabase.transactionDao().getAllTransactionsSync(
+                            migratedLedger.getId()
+                    );
+            assertEquals(3, transactions.size());
+
+            TransactionEntity allowance = transactions.get(0);
+            assertEquals(17, allowance.getId());
+            assertEquals("Allowance", allowance.getName());
+            assertEquals(TransactionEntity.TYPE_ALLOWANCE, allowance.getType());
+            assertEquals(100, allowance.getAmount(), 0.001);
+            assertEquals(1000, allowance.getCreatedAt());
+            assertFalse(allowance.isVoid());
+
+            TransactionEntity expense = transactions.get(1);
+            assertEquals(18, expense.getId());
+            assertEquals("Groceries", expense.getName());
+            assertEquals(TransactionEntity.TYPE_EXPENSE, expense.getType());
+            assertEquals(2000, expense.getCreatedAt());
+            assertFalse(expense.isVoid());
+
+            TransactionEntity deletedExpense = transactions.get(2);
+            assertEquals(19, deletedExpense.getId());
+            assertEquals("Old expense", deletedExpense.getName());
+            assertTrue(deletedExpense.isVoid());
+        } finally {
+            if (migratedDatabase != null) {
+                migratedDatabase.close();
+            }
+            context.deleteDatabase(databaseName);
+        }
     }
 
     private TransactionEntity findTransaction(

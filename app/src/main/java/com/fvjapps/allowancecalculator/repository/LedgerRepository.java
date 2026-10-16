@@ -112,7 +112,13 @@ public class LedgerRepository {
     }
 
     public void deleteLedger(long ledgerId) {
-        database.runInTransaction(() -> ledgerDao.delete(requireLedger(ledgerId)));
+        database.runInTransaction(() -> {
+            LedgerEntity ledger = requireLedger(ledgerId);
+            if (ledgerDao.getCountSync() <= 1) {
+                throw new IllegalStateException("The last ledger cannot be deleted");
+            }
+            ledgerDao.delete(ledger);
+        });
     }
 
     private LedgerEntity requireLedger(long ledgerId) {

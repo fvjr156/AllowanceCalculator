@@ -11,4 +11,18 @@
     <string name="ledger_name_required">Enter a ledger name.</string>
     <string name="choose_color_scheme">Choose a color scheme.</string>
     <string name="active_ledger">Active ledger</string>
+    <string name="ledger_actions">Actions for %1$s</string>
+    <string name="edit_ledger">Edit ledger</string>
+    <string name="save_ledger">Save changes</string>
+    <string name="export_ledger">Export ledger</string>
+    <string name="delete_ledger">Delete ledger</string>
+    <string name="delete_ledger_confirmation_title">Delete ledger?</string>
+    <string name="delete_ledger_confirmation_message">Delete “%1$s” and permanently remove all of its transactions? This cannot be undone. The last remaining ledger cannot be deleted.</string>
+    <string name="export_ledger_title">Export %1$s</string>
+    <string name="export_csv">CSV</string>
+    <string name="export_pdf">PDF</string>
+    <string name="transaction_type_allowance">Allowance</string>
+    <string name="transaction_type_expense">Expense</string>
+    <string name="transaction_details_title">Transaction details</string>
+    <string name="transaction_details">Ledger ID: %1$d\nName: %2$s\nAmount: ₱%3$s\nType: %4$s\nCreated: %5$s</string>
 </resources>

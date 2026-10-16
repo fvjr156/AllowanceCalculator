@@ -11,11 +11,14 @@ import com.fvjapps.allowancecalculator.managers.ExecutorManager;
 import com.fvjapps.allowancecalculator.repository.TransactionRepository;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.ExecutorService;
 
 public class TransactionViewModel extends ViewModel {
     private final TransactionRepository transactionRepository;
     private final LiveData<Long> selectedLedgerId;
     private final LiveData<List<TransactionEntity>> transactions;
+    private final ExecutorService databaseExecutor;
     private final MutableLiveData<String> error = new MutableLiveData<>();
     private final MutableLiveData<String> message = new MutableLiveData<>();
     private TransactionEntity lastDeletedEntity;
@@ -24,8 +27,24 @@ public class TransactionViewModel extends ViewModel {
             @NonNull TransactionRepository transactionRepository,
             @NonNull LiveData<Long> selectedLedgerId
     ) {
+        this(
+                transactionRepository,
+                selectedLedgerId,
+                ExecutorManager.getInstance().getDbExec()
+        );
+    }
+
+    public TransactionViewModel(
+            @NonNull TransactionRepository transactionRepository,
+            @NonNull LiveData<Long> selectedLedgerId,
+            @NonNull ExecutorService databaseExecutor
+    ) {
         this.transactionRepository = transactionRepository;
         this.selectedLedgerId = selectedLedgerId;
+        this.databaseExecutor = Objects.requireNonNull(
+                databaseExecutor,
+                "Database executor is required"
+        );
         this.transactions = Transformations.switchMap(
                 selectedLedgerId,
                 transactionRepository::observeActiveOrdered
@@ -118,7 +137,7 @@ public class TransactionViewModel extends ViewModel {
             String failureMessage,
             String successMessage
     ) {
-        ExecutorManager.getInstance().getDbExec().execute(() -> {
+        databaseExecutor.execute(() -> {
             try {
                 operation.run();
                 error.postValue(null);

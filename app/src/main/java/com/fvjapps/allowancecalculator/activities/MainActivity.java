@@ -23,6 +23,7 @@ import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.ColorUtils;
 import androidx.core.graphics.Insets;
@@ -63,6 +64,8 @@ import com.google.android.material.navigation.NavigationView;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.TextView;
+import android.widget.ImageButton;
+import android.widget.PopupMenu;
 import java.io.BufferedWriter;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -71,6 +74,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 
 public class MainActivity extends AppCompatActivity implements AddTransactionDialogFragment.OnAddTransactionListener {
 
@@ -88,6 +92,9 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
     private String pendingCsvLedgerName;
     private final Map<Integer, Long> drawerLedgerIds = new HashMap<>();
     private static final int DRAWER_LEDGER_ITEM_BASE = 1000;
+    private static final int LEDGER_ACTION_EDIT = 1;
+    private static final int LEDGER_ACTION_EXPORT = 2;
+    private static final int LEDGER_ACTION_DELETE = 3;
 
     private ActivityResultLauncher<Intent> createCsvLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
             new ActivityResultCallback<ActivityResult>() {
@@ -113,14 +120,15 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
             Snackbar.make(binding.main, "Wait for a ledger to load before exporting.", Snackbar.LENGTH_LONG).show();
             return;
         }
-        PrintManager man = (PrintManager) getSystemService(Context.PRINT_SERVICE);
-        long exportLedgerId = selectedLedgerId;
-        String exportLedgerName = selectedLedgerName;
-        if (exportLedgerName == null) {
+        if (selectedLedgerName == null) {
             Snackbar.make(binding.main, "Wait for the selected ledger to load before exporting.", Snackbar.LENGTH_LONG).show();
             return;
         }
+        exportAsPdf(selectedLedgerId, selectedLedgerName);
+    }
 
+    private void exportAsPdf(long exportLedgerId, @NonNull String exportLedgerName) {
+        PrintManager man = (PrintManager) getSystemService(Context.PRINT_SERVICE);
         String jobName = getString(R.string.app_name) + " - " + exportLedgerName;
         ExecutorManager.getInstance().getDbExec().execute(() -> {
             try {
@@ -173,58 +181,118 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
             long exportLedgerId,
             @NonNull String exportLedgerName
     ) {
-        ExecutorManager.getInstance().getFileExec().execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    OutputStream outputStream = getContentResolver().openOutputStream(uri);
-                    if (outputStream == null) {
-                        throw new java.io.IOException("Unable to open the selected export destination.");
-                    }
-                    try (BufferedWriter bw = new BufferedWriter(
-                            new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)
-                    )) {
-
-                        List<TransactionEntity> entityList =
-                                transactionViewModel.exportData(exportLedgerId);
-
-                        bw.write("ledger,id,type,amount,creationdate,voided,label");
-                        bw.newLine();
-
-                        for (TransactionEntity e : entityList) {
-                            if (e.getLedgerId() != exportLedgerId) {
-                                throw new IllegalStateException(
-                                        "Export query returned a transaction from another ledger."
-                                );
-                            }
-                            bw.write(
-                                    csvField(exportLedgerName) + "," +
-                                            e.getId() + "," +
-                                            e.getType() + "," +
-                                            e.getAmount() + "," +
-                                            csvField(MillisConv.toDate(
-                                                    e.getCreatedAt(),
-                                                    MillisConv.DateFormat.DATABASE_STANDARD
-                                            )) + "," +
-                                            e.isVoid() + "," +
-                                            csvField(e.getName())
-                            );
-                            bw.newLine();
-                        }
-
-                        bw.flush();
-                    }
-
-                    runOnUiThread(() ->
-                            Snackbar.make(binding.main, "Export success", Snackbar.LENGTH_LONG).show()
-                    );
-                } catch (Exception e) {
-                    runOnUiThread(() ->
-                            Snackbar.make(binding.main, "CSV export failed: " + e.getMessage(), Snackbar.LENGTH_LONG).show()
+        ExecutorManager.getInstance().getDbExec().execute(() -> {
+            List<TransactionEntity> entityList;
+            try {
+                entityList = transactionViewModel.exportData(exportLedgerId);
+                if (entityList.stream().anyMatch(
+                        transaction -> transaction.getLedgerId() != exportLedgerId
+                )) {
+                    throw new IllegalStateException(
+                            "Export query returned a transaction from another ledger."
                     );
                 }
+            } catch (RuntimeException exception) {
+                showCsvExportFailure(exception);
+                return;
             }
+
+            ExecutorManager.getInstance().getFileExec().execute(() ->
+                    writeCsvToUri(uri, exportLedgerId, exportLedgerName, entityList)
+            );
         });
+    }
+
+    private void launchCsvExport(long ledgerId, @NonNull String ledgerName) {
+        pendingCsvLedgerId = ledgerId;
+        pendingCsvLedgerName = ledgerName;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/csv");
+        intent.putExtra(
+                Intent.EXTRA_TITLE,
+                ExportFileName.forLedger(ledgerName, "csv")
+        );
+        createCsvLauncher.launch(intent);
+    }
+
+    private void showLedgerExportChooser(long ledgerId, @NonNull String ledgerName) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.export_ledger_title, ledgerName))
+                .setItems(
+                        new CharSequence[]{
+                                getString(R.string.export_csv),
+                                getString(R.string.export_pdf)
+                        },
+                        (dialog, which) -> {
+                            if (which == 0) {
+                                launchCsvExport(ledgerId, ledgerName);
+                            } else {
+                                exportAsPdf(ledgerId, ledgerName);
+                            }
+                        }
+                )
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void writeCsvToUri(
+            @NonNull Uri uri,
+            long exportLedgerId,
+            @NonNull String exportLedgerName,
+            @NonNull List<TransactionEntity> entityList
+    ) {
+        try {
+            OutputStream outputStream = getContentResolver().openOutputStream(uri);
+            if (outputStream == null) {
+                throw new java.io.IOException(
+                        "Unable to open the selected export destination."
+                );
+            }
+            try (BufferedWriter writer = new BufferedWriter(
+                    new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)
+            )) {
+                writer.write("ledger,id,type,amount,creationdate,voided,label");
+                writer.newLine();
+
+                for (TransactionEntity transaction : entityList) {
+                    if (transaction.getLedgerId() != exportLedgerId) {
+                        throw new IllegalStateException(
+                                "Export query returned a transaction from another ledger."
+                        );
+                    }
+                    writer.write(
+                            csvField(exportLedgerName) + "," +
+                                    transaction.getId() + "," +
+                                    transaction.getType() + "," +
+                                    transaction.getAmount() + "," +
+                                    csvField(MillisConv.toDate(
+                                            transaction.getCreatedAt(),
+                                            MillisConv.DateFormat.DATABASE_STANDARD
+                                    )) + "," +
+                                    transaction.isVoid() + "," +
+                                    csvField(transaction.getName())
+                    );
+                    writer.newLine();
+                }
+            }
+
+            runOnUiThread(() ->
+                    Snackbar.make(binding.main, "Export success", Snackbar.LENGTH_LONG).show()
+            );
+        } catch (Exception exception) {
+            showCsvExportFailure(exception);
+        }
+    }
+
+    private void showCsvExportFailure(@NonNull Exception exception) {
+        runOnUiThread(() ->
+                Snackbar.make(
+                        binding.main,
+                        "CSV export failed: " + exception.getMessage(),
+                        Snackbar.LENGTH_LONG
+                ).show()
+        );
     }
 
     private String csvField(String value) {
@@ -255,9 +323,12 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
 //        Objects.requireNonNull(getSupportActionBar()).hide();
 
         AppDatabase database = AppDatabase.getInstance(this);
-        LedgerRepository ledgerRepository = new LedgerRepository(database);
-        ColorSchemeRepository colorSchemeRepository = new ColorSchemeRepository(database);
-        TransactionRepository transactionRepository = new TransactionRepository(database);
+        ExecutorService databaseExecutor = ExecutorManager.getInstance().getDbExec();
+        LedgerRepository ledgerRepository = new LedgerRepository(database, databaseExecutor);
+        ColorSchemeRepository colorSchemeRepository =
+                new ColorSchemeRepository(database, databaseExecutor);
+        TransactionRepository transactionRepository =
+                new TransactionRepository(database, databaseExecutor);
         SharedPreferences preferences =
                 getSharedPreferences("ledger_preferences", MODE_PRIVATE);
         ledgerViewModel = new ViewModelProvider(
@@ -265,7 +336,8 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                 new LedgerViewModelFactory(
                         ledgerRepository,
                         colorSchemeRepository,
-                        preferences
+                        preferences,
+                        databaseExecutor
                 )
         ).get(LedgerViewModel.class);
 
@@ -273,7 +345,8 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                 this,
                 new TransactionViewModelFactory(
                         transactionRepository,
-                        ledgerViewModel.getSelectedLedgerId()
+                        ledgerViewModel.getSelectedLedgerId(),
+                        databaseExecutor
                 )
         ).get(TransactionViewModel.class);
 
@@ -361,20 +434,11 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                             @Override
                             public void onClick(DialogInterface dialog, int which) {
                                 dialog.dismiss();
-                                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-                                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                                intent.setType("text/csv");
                                 if (selectedLedgerId == null || selectedLedgerName == null) {
                                     Snackbar.make(binding.main, "Wait for a ledger to load before exporting.", Snackbar.LENGTH_LONG).show();
                                     return;
                                 }
-                                pendingCsvLedgerId = selectedLedgerId;
-                                pendingCsvLedgerName = selectedLedgerName;
-                                intent.putExtra(
-                                        Intent.EXTRA_TITLE,
-                                        ExportFileName.forLedger(selectedLedgerName, "csv")
-                                );
-                                createCsvLauncher.launch(intent);
+                                launchCsvExport(selectedLedgerId, selectedLedgerName);
                             }
                         })
                         .setNegativeButton("PDF", new DialogInterface.OnClickListener() {
@@ -415,6 +479,26 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                 item.setCheckable(true);
                 item.setChecked(selectedLedgerId != null
                         && selectedLedgerId == ledger.getId());
+                ImageButton actionsButton = new ImageButton(this);
+                actionsButton.setImageResource(R.drawable.baseline_more_vert_24);
+                actionsButton.setContentDescription(
+                        getString(R.string.ledger_actions, ledger.getName())
+                );
+                actionsButton.setColorFilter(getColor(R.color.text_primary_light));
+                actionsButton.setBackgroundResource(
+                        resolveAttributeResource(android.R.attr.selectableItemBackgroundBorderless)
+                );
+                int actionButtonSize = Math.round(
+                        48 * getResources().getDisplayMetrics().density
+                );
+                actionsButton.setLayoutParams(new android.view.ViewGroup.LayoutParams(
+                        actionButtonSize,
+                        actionButtonSize
+                ));
+                actionsButton.setOnClickListener(
+                        view -> showLedgerActions(view, ledger)
+                );
+                item.setActionView(actionsButton);
             }
         }
         menu.setGroupCheckable(R.id.ledger_group, true, true);
@@ -424,6 +508,51 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
         subtitle.setText(selectedLedger == null
                 ? getString(R.string.select_a_ledger)
                 : selectedLedger.getName());
+    }
+
+    private int resolveAttributeResource(int attribute) {
+        android.util.TypedValue value = new android.util.TypedValue();
+        if (!getTheme().resolveAttribute(attribute, value, true)) {
+            throw new IllegalStateException("Unable to resolve view feedback background.");
+        }
+        return value.resourceId;
+    }
+
+    private void showLedgerActions(@NonNull View anchor, @NonNull LedgerEntity ledger) {
+        PopupMenu popupMenu = new PopupMenu(this, anchor);
+        popupMenu.getMenu().add(Menu.NONE, LEDGER_ACTION_EDIT, Menu.NONE, R.string.edit_ledger);
+        popupMenu.getMenu().add(Menu.NONE, LEDGER_ACTION_EXPORT, Menu.NONE, R.string.export_ledger);
+        popupMenu.getMenu().add(Menu.NONE, LEDGER_ACTION_DELETE, Menu.NONE, R.string.delete_ledger);
+        popupMenu.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == LEDGER_ACTION_EDIT) {
+                showLedgerDialog(ledger);
+                return true;
+            }
+            if (item.getItemId() == LEDGER_ACTION_EXPORT) {
+                showLedgerExportChooser(ledger.getId(), ledger.getName());
+                return true;
+            }
+            if (item.getItemId() == LEDGER_ACTION_DELETE) {
+                confirmDeleteLedger(ledger);
+                return true;
+            }
+            return false;
+        });
+        popupMenu.show();
+    }
+
+    private void confirmDeleteLedger(@NonNull LedgerEntity ledger) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.delete_ledger_confirmation_title)
+                .setMessage(getString(
+                        R.string.delete_ledger_confirmation_message,
+                        ledger.getName()
+                ))
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.delete_ledger, (dialog, which) ->
+                        ledgerViewModel.deleteLedger(ledger.getId())
+                )
+                .show();
     }
 
     private boolean onDrawerItemSelected(@NonNull MenuItem item) {
@@ -442,6 +571,10 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
     }
 
     private void showCreateLedgerDialog() {
+        showLedgerDialog(null);
+    }
+
+    private void showLedgerDialog(@Nullable LedgerEntity ledger) {
         List<ColorSchemeEntity> schemes = availableColorSchemes;
         if (schemes == null || schemes.isEmpty()) {
             Snackbar.make(binding.main, "No predefined color schemes are available.", Snackbar.LENGTH_LONG).show();
@@ -462,11 +595,26 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                 schemeNames
         ));
 
+        if (ledger != null) {
+            nameInput.setText(ledger.getName());
+            descriptionInput.setText(ledger.getDescription());
+            for (int i = 0; i < schemes.size(); i++) {
+                if (ledger.getColorSchemeId() != null
+                        && schemes.get(i).getId() == ledger.getColorSchemeId()) {
+                    schemeSpinner.setSelection(i);
+                    break;
+                }
+            }
+        }
+        boolean isEditing = ledger != null;
         androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.create_ledger)
+                .setTitle(isEditing ? R.string.edit_ledger : R.string.create_ledger)
                 .setView(dialogView)
                 .setNegativeButton(android.R.string.cancel, null)
-                .setPositiveButton(R.string.create_ledger, null)
+                .setPositiveButton(
+                        isEditing ? R.string.save_ledger : R.string.create_ledger,
+                        null
+                )
                 .create();
         dialog.setOnShowListener(ignored -> dialog.getButton(DialogInterface.BUTTON_POSITIVE)
                 .setOnClickListener(view -> {
@@ -482,7 +630,22 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                             ? ""
                             : descriptionInput.getText().toString().trim();
                     ColorSchemeEntity selectedScheme = schemes.get(schemeSpinner.getSelectedItemPosition());
-                    ledgerViewModel.createLedger(name, description, selectedScheme.getId());
+                    if (isEditing) {
+                        LedgerEntity updatedLedger = new LedgerEntity(
+                                name,
+                                description,
+                                selectedScheme.getId()
+                        );
+                        updatedLedger.setId(ledger.getId());
+                        updatedLedger.setRunningBalance(ledger.getRunningBalance());
+                        ledgerViewModel.updateLedger(updatedLedger);
+                    } else {
+                        ledgerViewModel.createLedger(
+                                name,
+                                description,
+                                selectedScheme.getId()
+                        );
+                    }
                     dialog.dismiss();
                 }));
         dialog.show();
@@ -570,7 +733,10 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
     }
 
     private void setupItemTouchHelper() {
-        ItemTouchHelper.SimpleCallback smpcb = new ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT) {
+        ItemTouchHelper.SimpleCallback smpcb = new ItemTouchHelper.SimpleCallback(
+                0,
+                ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT
+        ) {
             @Override
             public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
                 return false;
@@ -579,9 +745,18 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
             @Override
             public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
                 int position = viewHolder.getBindingAdapterPosition();
+                if (position == RecyclerView.NO_POSITION
+                        || position >= adapter.getItemCount()) {
+                    return;
+                }
                 TransactionEntity tx = adapter.getEntity(position);
-                transactionViewModel.delete(tx);
-                showUndoSnackbar(tx);
+                if (direction == ItemTouchHelper.LEFT) {
+                    transactionViewModel.delete(tx);
+                    showUndoSnackbar(tx);
+                } else if (direction == ItemTouchHelper.RIGHT) {
+                    adapter.notifyItemChanged(position);
+                    showTransactionDetails(tx);
+                }
             }
 
             @Override
@@ -597,7 +772,9 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
                 if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE) {
                     TransactionAdapter.TransactionViewHolder holder = (TransactionAdapter.TransactionViewHolder) viewHolder;
 
-                    holder.binding.viewBackground.setVisibility(View.VISIBLE);
+                    holder.binding.viewBackground.setVisibility(dX < 0
+                            ? View.VISIBLE
+                            : View.GONE);
                     holder.binding.viewForeground.setTranslationX(dX);
                 }
 
@@ -627,6 +804,37 @@ public class MainActivity extends AppCompatActivity implements AddTransactionDia
     private void showUndoSnackbar(TransactionEntity tx) {
         Snackbar.make(binding.main, "Transaction deleted", Snackbar.LENGTH_LONG)
                 .setAction("UNDO", v -> transactionViewModel.undoDelete())
+                .show();
+    }
+
+    private void showTransactionDetails(@NonNull TransactionEntity transaction) {
+        String type;
+        if (transaction.getType() == TransactionEntity.TYPE_ALLOWANCE) {
+            type = getString(R.string.transaction_type_allowance);
+        } else if (transaction.getType() == TransactionEntity.TYPE_EXPENSE) {
+            type = getString(R.string.transaction_type_expense);
+        } else {
+            type = Integer.toString(transaction.getType());
+        }
+        String details = getString(
+                R.string.transaction_details,
+                transaction.getLedgerId(),
+                transaction.getName(),
+                String.format(
+                        java.util.Locale.getDefault(),
+                        "%.2f",
+                        transaction.getAmount()
+                ),
+                type,
+                MillisConv.toDate(
+                        transaction.getCreatedAt(),
+                        MillisConv.DateFormat.DETAILS
+                )
+        );
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.transaction_details_title)
+                .setMessage(details)
+                .setPositiveButton(android.R.string.ok, null)
                 .show();
     }
 

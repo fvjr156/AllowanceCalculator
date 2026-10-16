@@ -26,6 +26,7 @@ public class MillisConv {
 
     public enum DateFormat {
         DATABASE_STANDARD("yyyy-MM-dd HH:mm:ss.SSS"),
+        DETAILS("MMM d, yyyy 'at' h:mm a"),
         FILENAME_SAFE("yyyy-MM-dd_HH-mm-ss-SSS"),
         FILENAME_COMPACT("yyyyMMdd_HHmmss_SSS"),
         FILE_BACKUP("yyyy-MM-dd_HH-mm-ss");

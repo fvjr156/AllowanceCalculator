@@ -30,6 +30,7 @@ public class LedgerViewModel extends ViewModel {
     private final LiveData<List<ColorSchemeEntity>> colorSchemes;
     private final LiveData<ColorSchemeEntity> selectedColorScheme;
     private final MutableLiveData<String> error = new MutableLiveData<>();
+    private Long selectedLedgerIdState;
     private boolean initializationStarted;
 
     public LedgerViewModel(
@@ -37,10 +38,24 @@ public class LedgerViewModel extends ViewModel {
             @NonNull ColorSchemeRepository colorSchemeRepository,
             @NonNull SharedPreferences preferences
     ) {
+        this(
+                ledgerRepository,
+                colorSchemeRepository,
+                preferences,
+                ExecutorManager.getInstance().getDbExec()
+        );
+    }
+
+    public LedgerViewModel(
+            @NonNull LedgerRepository ledgerRepository,
+            @NonNull ColorSchemeRepository colorSchemeRepository,
+            @NonNull SharedPreferences preferences,
+            @NonNull ExecutorService databaseExecutor
+    ) {
         this.ledgerRepository = ledgerRepository;
         this.colorSchemeRepository = colorSchemeRepository;
         this.preferences = preferences;
-        this.databaseExecutor = ExecutorManager.getInstance().getDbExec();
+        this.databaseExecutor = databaseExecutor;
         this.ledgers = ledgerRepository.observeLedgers();
         this.colorSchemes = colorSchemeRepository.observeColorSchemes();
         this.selectedLedger = Transformations.switchMap(
@@ -95,7 +110,18 @@ public class LedgerViewModel extends ViewModel {
                     selected = allLedgers.get(0);
                 }
                 if (selected == null) {
-                    long createdId = ledgerRepository.createLedger("Allowance", "", null);
+                    List<ColorSchemeEntity> schemes =
+                            colorSchemeRepository.getColorSchemesSync();
+                    if (schemes.isEmpty()) {
+                        throw new IllegalStateException(
+                                "No color schemes are available for the default ledger."
+                        );
+                    }
+                    long createdId = ledgerRepository.createLedger(
+                            "Allowance",
+                            "",
+                            schemes.get(0).getId()
+                    );
                     selected = ledgerRepository.getLedgerSync(createdId);
                 }
                 setSelectedLedger(selected.getId());
@@ -140,6 +166,39 @@ public class LedgerViewModel extends ViewModel {
         });
     }
 
+    public void updateLedger(LedgerEntity ledger) {
+        databaseExecutor.execute(() -> {
+            try {
+                ledgerRepository.updateLedger(ledger);
+                error.postValue(null);
+            } catch (RuntimeException exception) {
+                error.postValue("Unable to update ledger: " + exception.getMessage());
+            }
+        });
+    }
+
+    public void deleteLedger(long ledgerId) {
+        databaseExecutor.execute(() -> {
+            try {
+                ledgerRepository.deleteLedger(ledgerId);
+                Long currentSelectedId = selectedLedgerIdState;
+                if (currentSelectedId != null && currentSelectedId == ledgerId) {
+                    List<LedgerEntity> remainingLedgers = ledgerRepository.getLedgersSync();
+                    if (remainingLedgers.isEmpty()) {
+                        throw new IllegalStateException(
+                                "No ledgers remain after deleting a ledger."
+                        );
+                    }
+                    setSelectedLedger(remainingLedgers.get(0).getId());
+                } else {
+                    error.postValue(null);
+                }
+            } catch (RuntimeException exception) {
+                error.postValue("Unable to delete ledger: " + exception.getMessage());
+            }
+        });
+    }
+
     private LedgerEntity findLedger(List<LedgerEntity> ledgers, long ledgerId) {
         for (LedgerEntity ledger : ledgers) {
             if (ledger.getId() == ledgerId) {
@@ -150,6 +209,7 @@ public class LedgerViewModel extends ViewModel {
     }
 
     private void setSelectedLedger(long ledgerId) {
+        selectedLedgerIdState = ledgerId;
         preferences.edit().putLong(PREF_SELECTED_LEDGER_ID, ledgerId).apply();
         selectedLedgerId.postValue(ledgerId);
         error.postValue(null);
